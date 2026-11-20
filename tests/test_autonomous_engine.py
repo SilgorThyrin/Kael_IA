@@ -68,6 +68,45 @@ class AutonomousEngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.engine._validate_plan(["same", "same"])
 
+    def test_autonomous_download_still_requires_approval_in_project_autonomous_mode(self):
+        project_path = self.ctx.project_path
+        project_path.mkdir(parents=True)
+        approvals = []
+        self.ctx.permission_policy = SimpleNamespace(
+            allows_project_write=lambda path: True,
+            is_within_projects_root=lambda path: True,
+        )
+
+        class ImmediateApprovalRegistry:
+            def create_approval(self, **request):
+                approvals.append(request)
+                request["callback"]()
+                return {"id": "download-approval"}
+
+        self.ctx.registry = ImmediateApprovalRegistry()
+        self.engine.running = True
+        self.engine.current_task = 1
+        downloaded_path = project_path / "Assets" / "asset.bin"
+
+        with patch(
+            "tools.file_download.download_file",
+            return_value={
+                "path": str(downloaded_path),
+                "bytes": 12,
+                "source": "https://assets.example/asset.bin",
+            },
+        ) as download_mock:
+            result = self.engine._execute_subtask_with_approval(
+                1,
+                "/baixar_arquivo https://assets.example/asset.bin Assets/asset.bin",
+            )
+
+        self.assertEqual(len(approvals), 1)
+        self.assertEqual(approvals[0]["title"], "Permissão para download externo")
+        self.assertIn("não será executado nem extraído", approvals[0]["details"])
+        self.assertIn("Download concluído", result)
+        download_mock.assert_called_once()
+
     def test_restart_marks_running_step_for_review_instead_of_repeating_it(self):
         task_id = self.add_task(
             "running",

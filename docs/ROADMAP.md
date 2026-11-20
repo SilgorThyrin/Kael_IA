@@ -15,6 +15,7 @@ Visao: um assistente local multiproposito para suporte de TI, desenvolvimento de
 - No nivel maximo, Kael pode criar e editar arquivos diretamente na pasta autorizada, com backup em sobrescritas. Subpastas precisam de autorizacao propria; exclusoes, rede, sistema e Studio continuam exigindo permissao.
 - O caminho `projects_root` agora e exposto pelo contexto para os comandos de criacao de projeto.
 - UI com seletor de arquivos/pastas, arvore relativa selecionada e envio controlado de texto ao modelo local. Conteudo de anexos nao e salvo no historico; ficam somente os nomes.
+- Menu de comandos com botoes que preenchem o chat sem enviar automaticamente; downloads HTTPS publicos podem ser gravados no projeto ativo somente apos aprovacao, com limite de 50 MiB, destino relativo e sem execucao/extracao automatica.
 - RAG local indexa documentos escolhidos pelo usuario, registra fonte/versao/URL/licenca, busca trechos citaveis e permite substituir ou remover uma fonte.
 - Validacao headless de Godot com limite de tempo, confinamento ao diretorio de projetos e autorizacao antes da execucao.
 - Propostas locais de codigo passam por teste/validacao numa copia temporaria e exigem uma segunda aprovacao para gravacao; sem runner compativel ou com falha, nao ha gravacao.
@@ -47,6 +48,7 @@ Visao: um assistente local multiproposito para suporte de TI, desenvolvimento de
 - [x] Permitir uma vez ou negar; decisoes sao consumidas uma unica vez e expiradas.
 - [x] Agente autonomo pausa para autorizacao em cada subtarefa mutavel.
 - [x] Declarar capacidades por comando/ferramenta (leitura, escrita de projeto, rede e Studio) e aplicar politica central.
+- [x] Exigir aprovacao por download externo, validar HTTPS e enderecos publicos, limitar tamanho e confinar o destino ao projeto sem sobrescrever arquivos existentes.
 - [ ] Mostrar plano, arquivos afetados e diff antes de permitir escrita; oferecer revisao por arquivo.
   - [x] Exibir diff completo em aprovacoes de `<kael_save>` e bloquear a gravacao se o destino mudar desde a previa.
   - [x] Permitir selecionar por arquivo o que sera gravado nos pedidos `<kael_save>`.

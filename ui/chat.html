@@ -830,6 +830,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   gap: 14px;
   font-size: 13px;
   align-items: baseline;
+  width: 100%;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.cmd-item:hover {
+  background: var(--bg-2);
+}
+.cmd-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .cmd-name {
   font-family: 'JetBrains Mono', monospace;
@@ -1473,6 +1488,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
         <div class="cmd-section-title">🏗️ Construção Manual</div>
         <div class="cmd-item"><span class="cmd-name">/construir_jogo [gênero] [nome]</span><span class="cmd-desc">Cria estrutura + GDD (--engine, --ref)</span></div>
         <div class="cmd-item"><span class="cmd-name">/pesquisar_jogos [gênero]</span><span class="cmd-desc">Pesquisa referências na web (--exemplos)</span></div>
+        <div class="cmd-item"><span class="cmd-name">/baixar_arquivo [URL HTTPS] [destino]</span><span class="cmd-desc">Baixa para o projeto após aprovação; até 50 MiB, sem executar ou extrair</span></div>
       </div>
       <div class="cmd-section">
         <div class="cmd-section-title">👁️ Análise e Correção</div>
@@ -2580,6 +2596,44 @@ function openCommandsModal() {
 function closeCommandsModal() {
   closeModal('commandsModal');
 }
+function initializeCommandMenu() {
+  document.querySelectorAll('#commandsModal .cmd-item').forEach(item => {
+    const name = item.querySelector('.cmd-name');
+    const description = item.querySelector('.cmd-desc');
+    if (!name || !description) return;
+
+    const label = name.textContent.trim();
+    const match = label.match(/^\/[\w-]+/);
+    if (!match) return;
+    let command = match[0];
+    if (command === '/limpar_flutuantes') {
+      command += ' --analisar';
+    } else if (label.includes('[')) {
+      command += ' ';
+    }
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cmd-item';
+    button.dataset.command = command;
+    button.setAttribute('aria-label', `${label}: ${description.textContent.trim()}`);
+    button.append(name, description);
+    button.addEventListener('click', () => insertCommand(command));
+    item.replaceWith(button);
+  });
+}
+function insertCommand(command) {
+  const input = document.getElementById('inputArea');
+  const current = input.value;
+  const separator = current && !current.endsWith('\n') ? '\n' : '';
+  input.value = `${current}${separator}${command}`;
+  closeCommandsModal();
+  autoResize(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  document.getElementById('liveStatus').textContent =
+    'Comando inserido no chat; revise e envie quando estiver pronto.';
+}
 function openModal(id) {
   const overlay = document.getElementById(id);
   const activeOverlay = document.querySelector('.modal-overlay.open');
@@ -3171,6 +3225,7 @@ setInterval(pollAutonomous, 8000);
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('inputArea');
+  initializeCommandMenu();
   if (window.matchMedia('(max-width: 768px)').matches) {
     document.getElementById('sidebar').classList.add('collapsed');
   }

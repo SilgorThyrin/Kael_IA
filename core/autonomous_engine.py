@@ -7,6 +7,7 @@ Integra com: Game Bridge, Memória Vetorial, Floating Detector
 ============================================================
 """
 import json
+import shlex
 import sqlite3
 import threading
 import time
@@ -531,8 +532,36 @@ class AutonomousEngine:
                 self.running = False
             return "Execução bloqueada: serviço de permissões indisponível."
 
+        try:
+            download_request = self._parse_download_subtask(subtask)
+            if download_request:
+                from tools.file_download import validate_download_request
+
+                policy = getattr(self.ctx, "permission_policy", None)
+                if policy is not None and not policy.is_within_projects_root(
+                    self.ctx.project_path
+                ):
+                    return "Download bloqueado: o projeto está fora da pasta de projetos autorizada."
+                validate_download_request(
+                    download_request[0],
+                    download_request[1],
+                    self.ctx.project_path,
+                    resolve_host=False,
+                )
+        except (OSError, ValueError) as exc:
+            return f"Download bloqueado: {exc}"
+
         policy = getattr(self.ctx, "permission_policy", None)
-        if policy is not None and policy.allows_project_write(self.ctx.project_path):
+        project_path = (
+            Path(self.ctx.project_path).resolve()
+            if download_request
+            else self.ctx.project_path
+        )
+        if (
+            not download_request
+            and policy is not None
+            and policy.allows_project_write(self.ctx.project_path)
+        ):
             if not self._is_current_running(task_id):
                 return "Tarefa interrompida; subtarefa não executada."
             try:
@@ -549,6 +578,11 @@ class AutonomousEngine:
                 decision.set()
                 return {"status": "denied", "response": outcome["result"]}
             try:
+                if download_request and Path(self.ctx.project_path).resolve() != project_path:
+                    outcome["result"] = (
+                        "Download cancelado: o projeto ativo mudou desde a aprovação."
+                    )
+                    return {"status": "error", "response": outcome["result"]}
                 outcome["result"] = self._execute_subtask(task_id, subtask)
                 return {
                     "status": "success",
@@ -567,9 +601,22 @@ class AutonomousEngine:
             decision.set()
 
         permission = registry.create_approval(
-            title="Permissão para subtarefa autônoma",
-            summary=f"O Kael quer executar esta etapa no projeto {self.ctx.project_path.name}.",
-            details=subtask,
+            title=(
+                "Permissão para download externo"
+                if download_request
+                else "Permissão para subtarefa autônoma"
+            ),
+            summary=(
+                f"O Kael quer baixar um arquivo para o projeto {project_path.name}."
+                if download_request
+                else f"O Kael quer executar esta etapa no projeto {project_path.name}."
+            ),
+            details=(
+                f"{subtask}\n\nSomente HTTPS público; limite de 50 MiB. "
+                "O arquivo não será executado nem extraído."
+                if download_request
+                else subtask
+            ),
             callback=execute,
             on_reject=reject,
         )
@@ -591,7 +638,11 @@ class AutonomousEngine:
             f"Projeto atual: {self.ctx.project_path.name}\n\n"
             f"Decomponha em 3-5 etapas concretas (no máximo {self.MAX_SUBTASKS}), "
             f"cada uma com até {self.MAX_SUBTASK_CHARS} caracteres. "
-            "Cada etapa deve ser uma ação específica; não repita etapas.\n\n"
+            "Cada etapa deve ser uma ação específica; não repita etapas. "
+            "Se precisar obter um arquivo, escreva uma etapa exatamente como "
+            "\"/baixar_arquivo https://host-publico/arquivo.ext Assets/arquivo.ext\"; "
+            "essa etapa sempre aguardará aprovação. Não use HTTP, não instale, "
+            "não extraia e não execute o arquivo baixado.\n\n"
             "Responda APENAS com um JSON array de strings, sem markdown:\n"
             '[\"Subtarefa 1\", \"Subtarefa 2\", \"Subtarefa 3\"]'
         )
@@ -616,6 +667,22 @@ class AutonomousEngine:
         """Executa uma subtarefa usando as tools disponíveis."""
         # Roteia para a tool apropriada
         result = None
+        download_request = self._parse_download_subtask(subtask)
+        if download_request:
+            from tools.file_download import download_file
+
+            download = download_file(
+                download_request[0],
+                download_request[1],
+                self.ctx.project_path,
+            )
+            relative_path = Path(download["path"]).resolve().relative_to(
+                Path(self.ctx.project_path).resolve()
+            )
+            return (
+                f"Download concluído: {relative_path.as_posix()} "
+                f"({download['bytes']} bytes); arquivo não executado nem extraído."
+            )
         if "criar" in subtask.lower() or "gerar" in subtask.lower():
             # Usa Game Bridge para criar estrutura
             prompt = f"{subtask}\nUse <kael_save filename='...'> para salvar o código."
@@ -642,6 +709,20 @@ class AutonomousEngine:
             result = res['response']
 
         return result
+
+    @staticmethod
+    def _parse_download_subtask(subtask):
+        try:
+            parts = shlex.split(subtask)
+        except ValueError as exc:
+            raise ValueError("A etapa de download tem aspas inválidas.") from exc
+        if not parts or parts[0].casefold() != "/baixar_arquivo":
+            return None
+        if len(parts) != 3:
+            raise ValueError(
+                "Use /baixar_arquivo <URL_HTTPS> <destino-relativo-no-projeto>."
+            )
+        return parts[1], parts[2]
 
     def _observe_result(self, result):
         """Analisa o resultado de uma subtarefa."""

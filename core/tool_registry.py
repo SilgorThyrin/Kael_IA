@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 TOOLS_DIR = Path(__file__).parent.parent / "tools"
+_APPROVAL_RESOURCE_UNBOUND = object()
 
 class ToolRegistry:
     def __init__(self, ctx):
@@ -66,6 +67,7 @@ class ToolRegistry:
                 "desc": info.get("desc", ""),
                 "tool": name,
                 "capability": info.get("capability", "confirm"),
+                "validate": info.get("validate"),
             }
         print(f"[REG] Tool carregada: {name} ({len(cmds)} comandos)")
     
@@ -281,7 +283,12 @@ class ToolRegistry:
             return False, "A solicitação expirou; nenhuma alteração foi executada."
         return bool(outcome.get("approved")), outcome.get("result", outcome.get("error"))
 
-    def dispatch(self, prompt, approved=False):
+    def dispatch(
+        self,
+        prompt,
+        approved=False,
+        expected_resource_path=_APPROVAL_RESOURCE_UNBOUND,
+    ):
         """Dispatch de comandos."""
         parts = prompt.split()
         if not parts:
@@ -351,6 +358,33 @@ class ToolRegistry:
             name = re.sub(r'[^\w\-]', '_', args[1]) if len(args) > 1 else default_name
             resource_path = projects_root / name
 
+        if expected_resource_path is not _APPROVAL_RESOURCE_UNBOUND:
+            current_resource_path = (
+                Path(resource_path).resolve() if resource_path is not None else None
+            )
+            approved_path = (
+                Path(expected_resource_path).resolve()
+                if expected_resource_path is not None
+                else None
+            )
+            if current_resource_path != approved_path:
+                return {
+                    "response": "O projeto ativo mudou desde a solicitação; nenhuma ação foi executada.",
+                    "thinking": "O destino não corresponde ao destino aprovado.",
+                    "status": "error",
+                }
+
+        validator = entry.get("validate")
+        if validator is not None:
+            try:
+                validator(self.ctx, args, flags)
+            except (OSError, ValueError) as exc:
+                return {
+                    "response": f"Comando inválido: {exc}",
+                    "thinking": "A validação dos argumentos falhou.",
+                    "status": "error",
+                }
+
         policy = getattr(self.ctx, "permission_policy", None)
         approval_capability = (
             "network"
@@ -380,7 +414,11 @@ class ToolRegistry:
                 title="Permissão necessária",
                 summary=f"{capability_label}: {entry['desc']}",
                 details=f"Comando solicitado: {prompt}{resource_details}",
-                callback=lambda: self.dispatch(prompt, approved=True),
+                callback=lambda: self.dispatch(
+                    prompt,
+                    approved=True,
+                    expected_resource_path=resource_path,
+                ),
             )
             return {
                 "response": "O Kael precisa da sua autorização antes de executar esta ação.",
