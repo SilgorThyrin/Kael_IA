@@ -129,66 +129,15 @@ class KaelContext:
             print(f"[ERRO] Ao salvar histórico: {e}")
     
     def process_save_commands(self, response_text, save_dir=None):
-        """Intercepta <kael_save> e escreve no disco."""
-        target_dir = (Path(save_dir) if save_dir else self.memory_dir).resolve()
-        target_dir.mkdir(parents=True, exist_ok=True)
-        
+        """Fail closed when the legacy context lacks tested-write approvals."""
         pattern = r'<kael_save\s+filename=[\'"]([^\'"]+)[\'"]>(.*?)</kael_save>'
         matches = re.findall(pattern, response_text, re.DOTALL)
-        
-        saved_files = []
-        clean_text = response_text
-        
-        for filename, content in matches:
-            normalized = filename.replace("\\", "/")
-            parts = [p for p in normalized.split("/") if p not in ("", ".")]
-            is_absolute = normalized.startswith("/") or (
-                len(parts[0]) >= 2 and parts[0][1] == ":" if parts else False
-            )
-            if not parts or ".." in parts or is_absolute:
-                clean_text = clean_text.replace(
-                    f'<kael_save filename="{filename}">{content}</kael_save>',
-                    f"\n[ARQUIVO BLOQUEADO: nome de arquivo inseguro '{filename}']",
-                )
-                clean_text = clean_text.replace(
-                    f"<kael_save filename='{filename}'>{content}</kael_save>",
-                    f"\n[ARQUIVO BLOQUEADO: nome de arquivo inseguro '{filename}']",
-                )
-                continue
-
-            safe_name = Path(*parts)
-            filepath = (target_dir / safe_name).resolve()
-            if filepath != target_dir and target_dir not in filepath.parents:
-                clean_text = clean_text.replace(
-                    f'<kael_save filename="{filename}">{content}</kael_save>',
-                    f"\n[ARQUIVO BLOQUEADO: caminho fora do diretorio permitido '{filename}']",
-                )
-                clean_text = clean_text.replace(
-                    f"<kael_save filename='{filename}'>{content}</kael_save>",
-                    f"\n[ARQUIVO BLOQUEADO: caminho fora do diretorio permitido '{filename}']",
-                )
-                continue
-            
-            try:
-                filepath.parent.mkdir(parents=True, exist_ok=True)
-                filepath.write_text(content.strip(), encoding='utf-8')
-                saved_files.append(str(safe_name))
-                
-                # Salva na memória vetorial se disponível
-                if self.memory:
-                    try:
-                        self.memory.add_memory(content.strip(), f"arquivo:{safe_name}")
-                    except:
-                        pass
-                
-                clean_text = clean_text.replace(f'<kael_save filename="{filename}">{content}</kael_save>', '')
-                clean_text = clean_text.replace(f"<kael_save filename='{filename}'>{content}</kael_save>", '')
-            except Exception as e:
-                clean_text += f"\n\n[ERRO AO SALVAR {safe_name}: {e}]"
-        
-        if saved_files:
-            clean_text += f"\n\n✅ **Sistema:** Arquivos salvos: {', '.join(saved_files)}"
-        return clean_text
+        if not matches:
+            return response_text
+        return (
+            "[ARQUIVO BLOQUEADO: o modo legado não possui o fluxo de teste e aprovação. "
+            "Nenhum arquivo foi gravado.]"
+        )
 
 
 class ToolRegistry:
@@ -366,9 +315,9 @@ class ToolRegistry:
         resposta = self.ctx.process_save_commands(resultado['response'], save_dir=self.ctx.project_path)
         
         return {
-            "response": f"🔧 **Integração analisada.** Correções salvas com sufixo `_fix`.\n\n{resposta}",
+            "response": f"🔧 **Integração analisada.** Resultado da proposta:\n\n{resposta}",
             "thinking": resultado.get('thinking', ''),
-            "status": "success"
+            "status": "blocked"
         }
     
     def _cmd_refatorar(self, parts):
@@ -395,9 +344,9 @@ class ToolRegistry:
         resposta = self.ctx.process_save_commands(resultado['response'], save_dir=self.ctx.project_path)
         
         return {
-            "response": f"♻️ **Refatoração concluída.** Novo arquivo: `{novo_nome}`\n\n{resposta}",
+            "response": f"♻️ **Refatoração analisada.** Proposta para `{novo_nome}`:\n\n{resposta}",
             "thinking": resultado.get('thinking', ''),
-            "status": "success"
+            "status": "blocked"
         }
     
     def _cmd_construir_jogo(self, parts):
@@ -432,6 +381,13 @@ class ToolRegistry:
         proj_dir = self.ctx.project_path.parent / nome
         bridge = self.ctx.game_bridge(str(proj_dir))
         info = bridge.create_project_structure(nome, genero, flags['engine'])
+        templates_response = ""
+        if info.get("template_files"):
+            from tools.game_bridge import template_save_commands
+            templates_response = self.ctx.process_save_commands(
+                template_save_commands(info["template_files"]),
+                save_dir=proj_dir,
+            )
         
         # Pesquisa de referência opcional
         base_pesquisa = ""
@@ -457,9 +413,18 @@ class ToolRegistry:
         )
         if flags['ref']:
             msg += f"- **Referências pesquisadas:** {', '.join(flags['ref'])}\n"
+        if templates_response:
+            msg += f"\n**Validação dos scripts:** {templates_response}\n"
         msg += f"\n{resposta_gdd}"
-        
-        return {"response": msg, "thinking": resultado.get('thinking', ''), "status": "success"}
+        return {
+            "response": msg,
+            "thinking": resultado.get('thinking', ''),
+            "status": (
+                "blocked"
+                if templates_response or "[ARQUIVO BLOQUEADO:" in resposta_gdd
+                else "success"
+            ),
+        }
     
     def _cmd_pesquisar_jogos(self, parts):
         if not self.ctx.web_research:
@@ -543,26 +508,13 @@ class ToolRegistry:
         except ImportError:
             pass
         
-        # Fallback: gera script local
-        if not self.ctx.game_bridge:
-            return {"response": "🔴 Game Bridge indisponível.", "thinking": "Módulo ausente.", "status": "error"}
-        
-        bridge = self.ctx.game_bridge(str(self.ctx.project_path))
-        info = bridge.create_floating_cleaner_script(modo=modo, backup=backup, max_distance=dist)
-        
         return {
             "response": (
-                f"🧹 **Script de limpeza gerado:** `Scripts/kael_limpeza_flutuantes.lua`\n"
-                f"- Modo: {info['modo']} | Backup: {'sim' if backup else 'nao'} | Alcance: {dist} studs\n\n"
-                f"**Como funciona:**\n"
-                f"1. Varredura única em `Workspace:GetDescendants()`\n"
-                f"2. Raycast para baixo em cada parte (excluindo o próprio modelo)\n"
-                f"3. Nada embaixo = flutuando → lista completa\n"
-                f"4. Remoção em lote (ou backup em `ServerStorage.Kael_Removidos`)\n\n"
-                f"**Executar:** cole no Command Bar do Studio."
+                "⛔ O Roblox Studio está desconectado. Nenhum script Luau foi salvo: "
+                "não há um runner de testes compatível para validar esse código."
             ),
-            "thinking": "Script Luau de varredura única + remoção em lote gerado.",
-            "status": "success"
+            "thinking": "Execução bloqueada porque não há runner de testes Luau disponível.",
+            "status": "error"
         }
     
     def _cmd_resultado_limpeza(self, parts):
@@ -664,7 +616,12 @@ def chat():
     
     hist = ctx.load_historico()
     if ctx.compressor is not None:
-        contexto = ctx.compressor.build_context(prompt, hist, memorias, ctx.system_prompt)
+        try:
+            contexto = ctx.compressor.build_context(prompt, hist, memorias, ctx.system_prompt)
+        except ValueError:
+            return jsonify({
+                "error": "A mensagem excede o limite de contexto do modelo. Reduza o tamanho."
+            }), 413
     else:
         contexto = prompt
     
@@ -675,7 +632,11 @@ def chat():
     hist.append({"role": "assistant", "content": resposta_final, "thinking": resultado['thinking']})
     ctx.save_historico(hist)
     
-    return jsonify({"response": resposta_final, "thinking": resultado['thinking'], "status": "success"})
+    return jsonify({
+        "response": resposta_final,
+        "thinking": resultado['thinking'],
+        "status": "blocked" if "[ARQUIVO BLOQUEADO:" in resposta_final else "success",
+    })
 
 @app.route('/stream', methods=['GET', 'POST'])
 def stream():

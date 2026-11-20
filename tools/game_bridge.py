@@ -5,6 +5,14 @@ import re
 from pathlib import Path
 
 
+def template_save_commands(template_files):
+    """Converte templates em propostas para o fluxo central de validação."""
+    return "".join(
+        f"<kael_save filename='{filename}'>{content}</kael_save>"
+        for filename, content in template_files
+    )
+
+
 class GameBridge:
     def __init__(self, project_path):
         self.project_path = Path(project_path)
@@ -97,6 +105,7 @@ class GameBridge:
         base = self.project_path
         base.mkdir(parents=True, exist_ok=True)
         templates = []
+        template_files = []
         if engine == 'godot':
             pastas = ['Scripts', 'Cenas', 'Assets', 'Docs', 'Tests']
             for p in pastas:
@@ -107,32 +116,49 @@ class GameBridge:
                 templates.append('project.godot')
             main = base / 'Scripts' / 'main.gd'
             if not main.exists():
-                main.write_text(f'extends Node\n\n# {nome} - gerado pelo Kael\n# Gênero: {genero}\n\nfunc _ready():\n\tprint("Projeto {nome} iniciado.")\n', encoding='utf-8')
                 templates.append('Scripts/main.gd')
+                template_files.append((
+                    'Scripts/main.gd',
+                    f'extends Node\n\n# {nome} - gerado pelo Kael\n# Gênero: {genero}\n\nfunc _ready():\n\tprint("Projeto {nome} iniciado.")\n',
+                ))
         elif engine == 'web':
             pastas = ['js', 'css', 'assets', 'Docs']
             for p in pastas:
                 (base / p).mkdir(parents=True, exist_ok=True)
             idx = base / 'index.html'
             if not idx.exists():
-                idx.write_text(f'<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<title>{nome}</title>\n<link rel="stylesheet" href="css/style.css">\n</head>\n<body>\n<h1>{nome}</h1>\n<p>Jogo web gerado pelo Kael (gênero: {genero}).</p>\n<script src="js/main.js"></script>\n</body>\n</html>\n', encoding='utf-8')
                 templates.append('index.html')
+                template_files.append((
+                    'index.html',
+                    f'<!DOCTYPE html>\n<html lang="pt-BR">\n<head>\n<meta charset="UTF-8">\n<title>{nome}</title>\n<link rel="stylesheet" href="css/style.css">\n</head>\n<body>\n<h1>{nome}</h1>\n<p>Jogo web gerado pelo Kael (gênero: {genero}).</p>\n<script src="js/main.js"></script>\n</body>\n</html>\n',
+                ))
             js = base / 'js' / 'main.js'
             if not js.exists():
-                js.write_text(f'// {nome} - gerado pelo Kael\nconsole.log("Projeto {nome} iniciado.");\n', encoding='utf-8')
                 templates.append('js/main.js')
+                template_files.append((
+                    'js/main.js',
+                    f'// {nome} - gerado pelo Kael\nconsole.log("Projeto {nome} iniciado.");\n',
+                ))
         else:
             pastas = ['Scripts', 'Modules', 'Assets', 'Docs', 'Tests']
             for p in pastas:
                 (base / p).mkdir(parents=True, exist_ok=True)
             main = base / 'Scripts' / 'main.lua'
             if not main.exists():
-                main.write_text(f'-- {nome} - gerado pelo Kael\n-- Gênero: {genero} (Server Script)\nlocal Players = game:GetService("Players")\n\nPlayers.PlayerAdded:Connect(function(player)\n\tprint(player.Name .. " entrou no jogo.")\nend)\n', encoding='utf-8')
                 templates.append('Scripts/main.lua')
-        return {"pastas": pastas, "engine": engine, "templates": templates}
+                template_files.append((
+                    'Scripts/main.lua',
+                    f'-- {nome} - gerado pelo Kael\n-- Gênero: {genero} (Server Script)\nlocal Players = game:GetService("Players")\n\nPlayers.PlayerAdded:Connect(function(player)\n\tprint(player.Name .. " entrou no jogo.")\nend)\n',
+                ))
+        return {
+            "pastas": pastas,
+            "engine": engine,
+            "templates": templates,
+            "template_files": template_files,
+        }
 
     def create_floating_cleaner_script(self, modo='REMOVER', backup=True, max_distance=50):
-        """Gera o script Luau de limpeza em lote e salva em Scripts/."""
+        """Retorna metadados para uma limpeza tipada; nao grava scripts Luau."""
         lua = f'''--[[
     KAEL - VARREDURA + REMOCAO EM LOTE DE BLOCOS FLUTUANTES
     Gerado pelo GameBridge. Modo: {modo} | Backup: {backup} | Distancia: {max_distance} studs
@@ -221,11 +247,11 @@ else
     print("[KAEL] Modo ANALISAR: nada removido.")
 end
 '''
-        scripts_dir = self.project_path / 'Scripts'
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        path = scripts_dir / 'kael_limpeza_flutuantes.lua'
-        path.write_text(lua, encoding='utf-8')
-        return {"arquivo": str(path), "modo": modo.upper(), "backup": backup}
+        return {
+            "modo": modo.upper(),
+            "backup": backup,
+            "max_distance": max_distance,
+        }
 
     def full_report(self):
         scan = self.scan_project()

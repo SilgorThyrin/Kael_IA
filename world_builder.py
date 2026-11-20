@@ -349,16 +349,7 @@ print("[World] Estrada {estrada["id"]} criada seguindo o relevo.")
         
         # Limpeza inteligente
         self._log("Limpando construcoes antigas do Kael...")
-        codigo_limpeza = """
-        local workspace = game:GetService("Workspace")
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj.Name:match("^World_") or obj.Name:match("^Kael_") then
-                obj:Destroy()
-            end
-        end
-        print("[World] Limpeza concluida.")
-        """
-        self.fn_enfileirar({"tipo": "executar", "nome": "World_Cleanup", "codigo": codigo_limpeza, "testar_automaticamente": False})
+        self.fn_enfileirar({"tipo": "limpar_construcoes_kael"})
         time.sleep(2)
 
         self._planejar_mapa()

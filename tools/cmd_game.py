@@ -3,16 +3,17 @@
 TOOL_NAME = "game"
 
 try:
-    from tools.game_bridge import GameBridge
+    from tools.game_bridge import GameBridge, template_save_commands
     AVAILABLE = True
 except ImportError:
     AVAILABLE = False
+    template_save_commands = lambda _templates: ""
     class GameBridge:
         def __init__(self, *a, **k): pass
         def full_report(self): return {"erro": "GameBridge não disponível."}
         def scan_project(self): return {"erro": "GameBridge não disponível."}
         def create_project_structure(self, *a, **k):
-            return {"pastas": [], "engine": "roblox", "templates": []}
+            return {"pastas": [], "engine": "roblox", "templates": [], "template_files": []}
 
 
 def ver_jogo(ctx, args, flags):
@@ -43,6 +44,12 @@ def construir_jogo(ctx, args, flags):
 
     proj_dir = ctx.projects_root / nome
     info = GameBridge(str(proj_dir)).create_project_structure(nome, genero, flags['engine'])
+    templates_response = ""
+    if info.get("template_files"):
+        templates_response = ctx.process_save_commands(
+            template_save_commands(info["template_files"]),
+            save_dir=proj_dir,
+        )
 
     base_pesquisa = ""
     if flags['ref']:
@@ -67,9 +74,20 @@ def construir_jogo(ctx, args, flags):
         f"🏗️ **Projeto `{nome}` criado!**\n- **Motor:** {info['engine']}\n"
         f"- Pastas: {', '.join(info['pastas'])}\n- Templates: {', '.join(info['templates']) or 'nenhum'}\n"
     )
+    if templates_response:
+        msg += f"\n**Validação dos scripts:** {templates_response}\n"
     if flags['ref']:
         msg += f"- **Referências:** {', '.join(flags['ref'])}\n"
-    return {"response": msg + f"\n{resposta}", "thinking": resultado['thinking'], "status": "success"}
+    save_status = (
+        "pending_approval" if "[AGUARDANDO TESTE E APROVAÇÃO:" in templates_response
+        else "blocked" if "[ALTERAÇÃO BLOQUEADA:" in templates_response
+        else "success"
+    )
+    return {
+        "response": msg + f"\n{resposta}",
+        "thinking": resultado['thinking'],
+        "status": save_status,
+    }
 
 
 def integrar_jogo(ctx, args, flags):
@@ -88,8 +106,13 @@ def integrar_jogo(ctx, args, flags):
     )
     resultado = ctx.generate(prompt_ia)
     resposta = ctx.process_save_commands(resultado['response'], save_dir=ctx.project_path)
-    return {"response": f"🔧 **Integração analisada.** Correções em Scripts/ com sufixo `_fix`.\n\n{resposta}",
-            "thinking": resultado['thinking'], "status": "success"}
+    save_status = (
+        "pending_approval" if "[AGUARDANDO TESTE E APROVAÇÃO:" in resposta
+        else "blocked" if "[ALTERAÇÃO BLOQUEADA:" in resposta
+        else "success"
+    )
+    return {"response": f"🔧 **Integração analisada.** Proposta de correções em Scripts/:\n\n{resposta}",
+            "thinking": resultado['thinking'], "status": save_status}
 
 
 def refatorar(ctx, args, flags):
@@ -107,13 +130,18 @@ def refatorar(ctx, args, flags):
     )
     resultado = ctx.generate(prompt_ia)
     resposta = ctx.process_save_commands(resultado['response'], save_dir=ctx.project_path)
-    return {"response": f"♻️ **Refatoração concluída.** Novo arquivo: `{novo}`\n\n{resposta}",
-            "thinking": resultado['thinking'], "status": "success"}
+    save_status = (
+        "pending_approval" if "[AGUARDANDO TESTE E APROVAÇÃO:" in resposta
+        else "blocked" if "[ALTERAÇÃO BLOQUEADA:" in resposta
+        else "success"
+    )
+    return {"response": f"♻️ **Refatoração analisada.** Proposta para `{novo}`:\n\n{resposta}",
+            "thinking": resultado['thinking'], "status": save_status}
 
 
 COMMANDS = {
-    "/ver_jogo": {"handler": ver_jogo, "desc": "Análise estática real do projeto"},
-    "/construir_jogo": {"handler": construir_jogo, "desc": "Cria estrutura + GDD (--engine, --ref)"},
-    "/integrar_jogo": {"handler": integrar_jogo, "desc": "IA corrige scripts reais"},
-    "/refatorar": {"handler": refatorar, "desc": "IA refatora o maior script"},
+    "/ver_jogo": {"handler": ver_jogo, "desc": "Análise estática real do projeto", "capability": "read"},
+    "/construir_jogo": {"handler": construir_jogo, "desc": "Cria estrutura + GDD (--engine, --ref)", "capability": "project_create"},
+    "/integrar_jogo": {"handler": integrar_jogo, "desc": "IA corrige scripts reais", "capability": "project_write"},
+    "/refatorar": {"handler": refatorar, "desc": "IA refatora o maior script", "capability": "project_write"},
 }

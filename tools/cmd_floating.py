@@ -62,23 +62,22 @@ def limpar_flutuantes(ctx, args, flags):
             copia_msg = f"- 📦 Cópia limpa: `{out.name}` ({n} removidos)\n"
 
     lua = det.generate_lua_batch(batch=batch, names=names or None)
-    scripts_dir = ctx.project_path / 'Scripts'
-    scripts_dir.mkdir(parents=True, exist_ok=True)
-    (scripts_dir / 'remover_flutuantes.lua').write_text(lua, encoding='utf-8')
+    validation_response = ctx.process_save_commands(
+        f"<kael_save filename='Scripts/remover_flutuantes.lua'>{lua}</kael_save>",
+        save_dir=ctx.project_path,
+    )
 
     modo = "DIRECIONADO (lista que o Kael viu)" if names else "RAYCAST AO VIVO"
     return {
         "response": (
-            f"🧹 **Remoção em lotes preparada!** (lotes de {batch})\n- Modo: {modo}\n"
-            f"- Blocos na lista: {len(names)}\n{copia_msg}- Script: `Scripts/remover_flutuantes.lua`\n\n"
-            f"**Uso:** Command Bar do Studio → cole o script → Enter. "
-            f"`DRY_RUN = true` só lista sem remover."
+            f"🧹 **Análise em lotes concluída** (lotes de {batch})\n- Modo: {modo}\n"
+            f"- Blocos na lista: {len(names)}\n{copia_msg}{validation_response}"
         ),
-        "thinking": "Script de remoção em lotes gerado.", "status": "success"
+        "thinking": "A gravação de Luau exige um runner de testes compatível.",
+        "status": "error",
     }
 
 
 COMMANDS = {
-    "/ver_flutuantes": {"handler": ver_flutuantes, "desc": "Kael vê blocos sem apoio no .rbxlx"},
-    "/limpar_flutuantes": {"handler": limpar_flutuantes, "desc": "Gera remoção em lotes (--lote N)"},
+    "/ver_flutuantes": {"handler": ver_flutuantes, "desc": "Kael vê blocos sem apoio no .rbxlx", "capability": "overwrite"},
 }

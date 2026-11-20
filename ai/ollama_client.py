@@ -1,37 +1,40 @@
 import json
-import sys
 import requests
-from pathlib import Path
+from core.configuration import (
+    DEFAULT_CONFIG_PATH,
+    load_config as load_runtime_config,
+    validate_generation_settings,
+)
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.json"
+CONFIG_PATH = DEFAULT_CONFIG_PATH
 
 def load_config():
-    try:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"[ERRO] Não foi possível ler config.json: {e}")
-        return {
-            "ollama_url": "http://127.0.0.1:11434",
-            "model_name": "qwen3:8b",
-            "temperature": 0.7,
-            "max_tokens": 2048
-        }
+    return load_runtime_config()
 
 def check_ollama_status():
     config = load_config()
     try:
         r = requests.get(f"{config['ollama_url']}/api/tags", timeout=3)
         return r.status_code == 200
-    except requests.exceptions.ConnectionError:
+    except requests.RequestException:
         return False
 
-def generate_response(prompt: str, system_prompt: str = None, think: bool = None) -> dict:
+def generate_response(
+    prompt: str,
+    system_prompt: str = None,
+    think: bool = None,
+    settings: dict = None,
+) -> dict:
     """Gera resposta via STREAMING."""
     config = load_config()
-
-    if not check_ollama_status():
-        return {"response": "[ERRO] Ollama não está respondendo.", "thinking": ""}
+    if settings is not None:
+        generation = validate_generation_settings(settings)
+        config.update({
+            "model_name": generation["model"],
+            "temperature": generation["temperature"],
+            "max_tokens": generation["max_tokens"],
+            "think": generation["think"],
+        })
 
     if think is None:
         think = config.get("think", True)
@@ -93,10 +96,16 @@ def generate_response(prompt: str, system_prompt: str = None, think: bool = None
 
     except requests.exceptions.Timeout:
         print(" TIMEOUT!")
-        return {"response": "[ERRO] Ollama parou de responder durante a geração.", "thinking": ""}
+        message = "Ollama parou de responder durante a geração."
+        return {"response": f"[ERRO] {message}", "thinking": "", "error": message}
+    except requests.RequestException as e:
+        print(f" ERRO: {e}")
+        message = f"Ollama não está respondendo: {e}"
+        return {"response": f"[ERRO] {message}", "thinking": "", "error": message}
     except Exception as e:
         print(f" ERRO: {e}")
-        return {"response": f"[ERRO] Falha na comunicação: {e}", "thinking": ""}
+        message = f"Falha na comunicação com Ollama: {e}"
+        return {"response": f"[ERRO] {message}", "thinking": "", "error": message}
 
 if __name__ == "__main__":
     print("=" * 40)

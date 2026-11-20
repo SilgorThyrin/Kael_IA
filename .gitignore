@@ -4,6 +4,17 @@ __pycache__/
 venv/
 env/
 .env
+config/config.json
+config/generation.local.json
+config/autonomy.local.json
+config/skills.local.json
+kael_knowledge/docs_rag.sqlite
+ultimas_mensagens.json
+kael_memory.db
+*.db
+*.sqlite
+*.sqlite3
+backups/
 
 # Modelos IA (NUNCA versionar)
 Modelos_Ollama/

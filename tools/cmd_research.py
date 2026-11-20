@@ -40,5 +40,5 @@ def pesquisar_jogos(ctx, args, flags):
 
 
 COMMANDS = {
-    "/pesquisar_jogos": {"handler": pesquisar_jogos, "desc": "Pesquisa gênero + exemplos na web (--exemplos)"},
+    "/pesquisar_jogos": {"handler": pesquisar_jogos, "desc": "Pesquisa gênero + exemplos na web (--exemplos)", "capability": "network"},
 }

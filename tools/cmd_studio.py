@@ -12,8 +12,8 @@ def ping_studio(ctx, args, flags):
     b = _bridge(ctx)
     if not b:
         return {"response": "🔴 Plugin Bridge não carregado.", "thinking": "Bridge ausente.", "status": "error"}
-    b.enqueue({"tipo": "ping"})
-    return {"response": "📡 **Ping enfileirado.** Olhe o Output do Roblox Studio: deve aparecer `🟢 PONG!`",
+    task = b.enqueue({"tipo": "ping"})
+    return {"response": f"📡 **Ping enfileirado** (`{task['task_id']}`). Ative o polling no plugin do Studio e confira o Output.",
             "thinking": "Tarefa de ping enfileirada para o plugin.", "status": "success"}
 
 
@@ -21,18 +21,17 @@ def pedir_visao(ctx, args, flags):
     b = _bridge(ctx)
     if not b:
         return {"response": "🔴 Plugin Bridge não carregado.", "thinking": "Bridge ausente.", "status": "error"}
-    b.enqueue({"tipo": "pedir_visao"})
-    return {"response": "🗺️ **Varredura solicitada.** O plugin vai mapear o Workspace e enviar para `/visao_jogo`.",
+    task = b.enqueue({"tipo": "pedir_visao"})
+    return {"response": f"🗺️ **Varredura solicitada** (`{task['task_id']}`). Ative o polling no plugin do Studio para mapear o Workspace.",
             "thinking": "Tarefa de visão enfileirada.", "status": "success"}
 
 
 def pedir_print(ctx, args, flags):
-    b = _bridge(ctx)
-    if not b:
-        return {"response": "🔴 Plugin Bridge não carregado.", "thinking": "Bridge ausente.", "status": "error"}
-    b.enqueue({"tipo": "pedir_screenshot"})
-    return {"response": "📸 **Screenshot solicitado.** (Requer modo Play/F5 no Studio.) Será salvo em `Screenshots/`.",
-            "thinking": "Tarefa de screenshot enfileirada.", "status": "success"}
+    return {
+        "response": "📸 Captura de screenshot ainda não é suportada pelo plugin Roblox.",
+        "thinking": "Nenhuma tarefa foi enfileirada.",
+        "status": "error",
+    }
 
 
 def studio_status(ctx, args, flags):
@@ -56,7 +55,7 @@ def studio_status(ctx, args, flags):
             f"- **Scripts de servidor:** {scripts}\n"
             f"- **Último teste:** {ultimo_teste}\n"
             f"- **Erros reportados:** {len(b.errors)}\n"
-            f"- **Tarefas na fila:** {len(b.task_queue)}"
+            f"- **Tarefas na fila:** {b.queue_length()}"
         ),
         "thinking": "Estado do plugin consultado via Bridge.",
         "status": "success"
@@ -64,8 +63,8 @@ def studio_status(ctx, args, flags):
 
 
 COMMANDS = {
-    "/studio_ping": {"handler": ping_studio, "desc": "Ping no plugin do Studio"},
-    "/studio_visao": {"handler": pedir_visao, "desc": "Pede varredura do Workspace"},
-    "/studio_print": {"handler": pedir_print, "desc": "Pede screenshot (modo Play)"},
-    "/studio_status": {"handler": studio_status, "desc": "Estado do plugin/Studio"},
+    "/studio_ping": {"handler": ping_studio, "desc": "Ping no plugin do Studio", "capability": "studio"},
+    "/studio_visao": {"handler": pedir_visao, "desc": "Pede varredura do Workspace", "capability": "studio"},
+    "/studio_print": {"handler": pedir_print, "desc": "Pede screenshot (modo Play)", "capability": "studio"},
+    "/studio_status": {"handler": studio_status, "desc": "Estado do plugin/Studio", "capability": "read"},
 }

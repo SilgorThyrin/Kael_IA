@@ -24,6 +24,7 @@ def status(ctx, args, flags):
             f"- **Tools carregadas:** {', '.join(sorted(ctx.registry.tools.keys()))}\n"
             f"- **Arquivos na Memória:** {len(mem_files)}\n"
             f"- **Projeto Ativo:** `{ctx.project_path.name}`\n"
+            f"- **Política de Escrita:** `{ctx.permission_policy.mode}`\n"
             f"- **Modo Autônomo:** {'🟢 ATIVO' if ctx.autonomous['active'] else '⚪ Inativo'}"
         ),
         "thinking": "Comando /status executado pela tool system.",
@@ -75,10 +76,10 @@ def parar(ctx, args, flags):
 
 
 COMMANDS = {
-    "/status": {"handler": status, "desc": "Saúde real do sistema"},
-    "/teste_conexao": {"handler": teste_conexao, "desc": "Ping no Ollama e módulos"},
-    "/help": {"handler": help_cmd, "desc": "Menu de comandos"},
-    "/ajuda": {"handler": help_cmd, "desc": "Alias de /help"},
-    "/gerenciar_jogo": {"handler": gerenciar, "desc": "Ativa modo autônomo"},
-    "/parar_gerenciamento": {"handler": parar, "desc": "Desativa modo autônomo"},
+    "/status": {"handler": status, "desc": "Saúde real do sistema", "capability": "read"},
+    "/teste_conexao": {"handler": teste_conexao, "desc": "Ping no Ollama e módulos", "capability": "read"},
+    "/help": {"handler": help_cmd, "desc": "Menu de comandos", "capability": "read"},
+    "/ajuda": {"handler": help_cmd, "desc": "Alias de /help", "capability": "read"},
+    "/gerenciar_jogo": {"handler": gerenciar, "desc": "Ativa modo autônomo", "capability": "control"},
+    "/parar_gerenciamento": {"handler": parar, "desc": "Desativa modo autônomo", "capability": "control"},
 }

@@ -10,7 +10,8 @@ TOOL_NAME = "organizar"
 COMMANDS = {
     "/organizar_jogo": {
         "handler": cmd_organizar, # type: ignore
-        "desc": "Analisa, organiza e corrige todos os scripts do jogo existente"
+        "desc": "Analisa, organiza e corrige todos os scripts do jogo existente",
+        "capability": "studio",
     }
 }
 
@@ -156,7 +157,7 @@ def cmd_organizar(ctx, args, flags):
         }
     
     # Solicita envio completo dos scripts (nova tarefa para o plugin)
-    ctx.plugin_bridge.enqueue({
+    task = ctx.plugin_bridge.enqueue({
         "tipo": "enviar_todos_scripts",
         "incluir_conteudo": True
     })
@@ -164,7 +165,7 @@ def cmd_organizar(ctx, args, flags):
     return {
         "response": (
             "🗂️ **Organização iniciada!**\n\n"
-            "O Kael solicitou ao Studio o conteúdo de todos os scripts.\n"
+            f"O Kael solicitou ao Studio o conteúdo dos scripts (tarefa `{task['task_id']}`).\n"
             "Em alguns segundos, vou:\n"
             "1. ✅ Analisar cada script contra 10+ regras de bugs\n"
             "2. ✅ Classificar (Server / Client / Module / UI)\n"
@@ -184,6 +185,8 @@ def cmd_status_organizacao(ctx, args, flags):
     
     estado = ctx.plugin_bridge.last_state or {}
     scripts = estado.get('scripts_com_conteudo', [])
+    truncated = sum(1 for script in scripts if script.get("truncado"))
+    content_limited = estado.get("scripts_com_conteudo_limitado", False)
     
     if not scripts:
         return {
@@ -209,6 +212,7 @@ def cmd_status_organizacao(ctx, args, flags):
             f"- Scripts recebidos: **{len(scripts)}**\n"
             f"- Bugs detectados: **{total_bugs}** ({criticos} críticos)\n"
             f"- Server: {por_tipo['Server']} | Client: {por_tipo['Client']} | Module: {por_tipo['Module']}\n\n"
+            f"{'⚠️ Parte do conteúdo foi limitada; ' + str(truncated) + ' script(s) foram truncados. Revise antes de aplicar.\n\n' if content_limited or truncated else ''}"
             f"Use `/aplicar_organizacao` para salvar as correções."
         ),
         "thinking": "Análise estatística dos scripts recebidos.",
