@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+.env.local
+
+# --- IA Local e Modelos (NUNCA SUBIR ISSO) ---
+*.gguf
+*.bin
+*.safetensors
+.ollama/
+llama.cpp/build/
+models/
+
+# --- Banco de Dados e Memória (Privacidade) ---
+# Suba apenas o schema, não o banco com seus dados reais
+*.db
+*.sqlite
+*.sqlite3
+!schema.sql
+
+# --- IDEs e Editores ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Node.js / n8n (se usar) ---
+node_modules/
+npm-debug.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs e Temporários ---
+*.log
+temp/
+tmp/
+
+# --- Bloquear Arquivos Pesados e Binários ---
+*.exe
+*.dll
+*.zip
+*.rar
+*.7z
+
+# --- Ambientes Virtuais Python (NUNCA subir isso) ---
+python/
+venv/
+env/
