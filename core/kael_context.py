@@ -166,12 +166,21 @@ class KaelContext:
             proposed_files=all_changes,
         )
         if test_plan is None:
-            return {
-                "status": "error",
-                "response": (
+            if {Path(name).suffix.casefold() for name in code_matches}.issubset(
+                {".lua", ".luau"}
+            ):
+                reason = (
+                    "ALTERAÇÃO BLOQUEADA: não há um runner de testes Roblox/Luau "
+                    "configurado. Nenhum código foi gravado."
+                )
+            else:
+                reason = (
                     "ALTERAÇÃO BLOQUEADA: não encontrei uma suíte de testes compatível. "
                     "Nenhum código foi gravado."
-                ),
+                )
+            return {
+                "status": "error",
+                "response": reason,
             }
 
         registry = getattr(self, "registry", None)
@@ -320,6 +329,9 @@ class KaelContext:
                 return "\n[ARQUIVO BLOQUEADO: não foi possível preparar a validação do código.]"
             if pending["status"] == "permission_required":
                 return f"\n[AGUARDANDO TESTE E APROVAÇÃO: {pending['response']}]"
+            reason = pending["response"].strip()
+            if reason.startswith("ALTERAÇÃO BLOQUEADA:"):
+                return f"\n[{reason}]"
             return f"\n[ALTERAÇÃO BLOQUEADA: {pending['response']}]"
         if (
             authorized_folder_required

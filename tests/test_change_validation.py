@@ -143,6 +143,8 @@ class ChangeValidationTests(unittest.TestCase):
         )
 
         self.assertIn("[ALTERAÇÃO BLOQUEADA:", response)
+        self.assertIn("runner de testes Roblox/Luau", response)
+        self.assertEqual(response.count("[ALTERAÇÃO BLOQUEADA:"), 1)
         self.assertFalse((self.root / "Scripts" / "Main.lua").exists())
 
     def test_test_failure_does_not_create_apply_approval_or_modify_source(self):
