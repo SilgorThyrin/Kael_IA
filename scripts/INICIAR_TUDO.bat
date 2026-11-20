@@ -1,33 +1,34 @@
 @echo off
-chcp 65001 >nul
-title INICIANDO KAEL (Modo Diagnóstico)
-set "TARGET_DIR=C:\PortableAI"
-cd /d "%TARGET_DIR%"
+title Kael - Inicializador Completo
+color 0A
+echo ==========================================
+echo   INICIANDO SISTEMA KAEL
+echo ==========================================
+echo.
 
-echo [1/4] Limpando processos antigos para evitar conflitos...
-taskkill /F /IM ollama.exe >nul 2>&1
-taskkill /F /IM python.exe >nul 2>&1
-taskkill /F /IM pythonw.exe >nul 2>&1
+:: 1. Inicia o Ollama em segundo plano (se ja estiver rodando, ignora)
+echo [1/3] Verificando Ollama...
+tasklist /FI "IMAGENAME eq ollama.exe" 2>NUL | find /I /N "ollama.exe">NUL
+if "%ERRORLEVEL%"=="0" (
+    echo [+] Ollama ja esta em execucao.
+) else (
+    echo [+] Iniciando Ollama em segundo plano...
+    start "" /B "C:\PortableAI\Ollama\ollama.exe" serve
+    timeout /t 3 /nobreak >nul
+)
+
+:: 2. Inicia o Servidor API do Kael (em uma nova janela invisivel ou minimizada)
+echo [2/3] Iniciando Servidor API do Kael...
+start "Kael API Server" /MIN cmd /c "cd /d C:\PortableAI\kael && ..\python\python.exe api_server.py"
 timeout /t 2 /nobreak >nul
 
-echo [2/4] Subindo o motor Ollama...
-start "Ollama Server" "%TARGET_DIR%\Ollama\ollama.exe" serve
-timeout /t 4 /nobreak >nul
-
-echo [3/4] Iniciando o Cerebro do Kael (Python)...
-:: Usamos python.exe (sem o 'w') propositalmente para ver QUALQUER erro na tela
-start "Kael Core (NAO FECHE ESTA JANELA)" "%TARGET_DIR%\python\python.exe" kael_core.py
-timeout /t 5 /nobreak >nul
-
-echo [4/4] Abrindo o Chat no Navegador...
-:: Forçamos a abertura na URL do servidor local, NAO no arquivo HTML solto
-start "" "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe" "http://127.0.0.1:8000"
+:: 3. Abre a Interface no Navegador
+echo [3/3] Abrindo Interface do Kael...
+start "" "C:\PortableAI\kael\chat.html"
 
 echo.
-echo ===================================================
-echo KAEL INICIADO!
-echo Verifique se estas 2 janelas pretas estão abertas:
-echo 1. "Ollama Server"
-echo 2. "Kael Core (NAO FECHE ESTA JANELA)"
-echo ===================================================
-pause
+echo ==========================================
+echo   KAEL INICIADO COM SUCESSO!
+echo   (Nao feche a janela preta do "Kael API Server")
+echo ==========================================
+timeout /t 5

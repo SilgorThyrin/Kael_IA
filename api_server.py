@@ -1,151 +1,123 @@
-from flask import Flask, request, jsonify, send_from_directory
-import threading
+"""
+KAEL API SERVER v5.2 - Com Agente Autônomo de Criação
+"""
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import sys
 import time
-import os
-import json
-import logging
-import requests
+import threading
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
+
+from core.kael_context import KaelContext
+from core.tool_registry import ToolRegistry
+from core.autonomous_agent import AutonomousAgent
+
+# Boot
+ctx = KaelContext()
+registry = ToolRegistry(ctx)
+ctx.registry = registry
+registry.auto_discover()
+
+# Agente Autônomo
+ctx.autonomous_agent = AutonomousAgent(ctx)
 
 app = Flask(__name__)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOCK_ESTADO = threading.Lock()
+CORS(app)
 
-# Estado Global
-ESTADO_KAEL = {
-    "modo_auto": False,
-    "modo_rpg": False,
-    "ultimo_comando": "",
-    "ultima_resposta": "",
-    "status": "Ocioso",
-    "mensagens_chat": [],
-    "fila_roblox": [],
-    "estado_jogo": {},
-    "ultimo_erro_roblox": ""
-}
+# Plugin Bridge
+try:
+    from core.plugin_bridge import register_routes
+    register_routes(app, ctx)
+    print("[OK] Plugin Bridge registrado.")
+except Exception as e:
+    print(f"[AVISO] Plugin Bridge desativado: {e}")
 
-print("\n" + "="*60)
-print("🚨 [KAEL] VERSÃO NOVA DO API_SERVER CARREGADA COM SUCESSO! 🚨")
-print("🚨 SE VOCÊ NÃO VÊ ISSO NO TERMINAL, O ARQUIVO ERRADO ESTÁ RODANDO!")
-print("="*60 + "\n")
+print("\n" + "=" * 60)
+print("🚨 [KAEL] API SERVER v5.2 RODANDO NA PORTA 8000 🚨")
+print(f"🎮 Projeto: {ctx.project_path}")
+print(f"🔧 Registry: {len(registry.tools)} tools | {len(registry.commands)} comandos")
+print(f"🤖 Agente Autônomo: {'✅ ATIVO' if ctx.autonomous_agent.active else '⚪ Inativo'}")
+print("=" * 60 + "\n")
 
-@app.route("/status", methods=["GET"])
-def get_status():
-    with LOCK_ESTADO:
-        return jsonify({
-            "status": ESTADO_KAEL["status"],
-            "fila_pendente": len(ESTADO_KAEL["fila_roblox"]),
-            "modo_auto": ESTADO_KAEL["modo_auto"],
-            "modo_rpg": ESTADO_KAEL["modo_rpg"]
-        })
+# Loop do agente autônomo
+def autonomous_loop():
+    while True:
+        if ctx.autonomous_agent.active:
+            ctx.autonomous_agent.run_cycle()
+        time.sleep(3)
 
-@app.route("/comando", methods=["POST"])
-def receber_comando():
-    data = request.json
-    if not data or 'mensagem' not in data:
-        return jsonify({"erro": "Formato inválido"}), 400
-        
-    texto = data['mensagem'].strip()
-    print(f"\n[API] 📩 COMANDO RECEBIDO DO CHAT: '{texto}'")
+threading.Thread(target=autonomous_loop, daemon=True).start()
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({
+        "status": "online" if ctx.ollama_online() else "ollama_offline",
+        "tools": sorted(registry.tools.keys()),
+        "commands": sorted(registry.commands.keys()),
+        "autonomous_mode": ctx.autonomous["active"],
+        "autonomous_agent": ctx.autonomous_agent.get_status()
+    })
+
+@app.route('/historico', methods=['GET'])
+def get_historico():
+    return jsonify(ctx.load_historico())
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json or {}
+    prompt = data.get('prompt', '').strip()
+    if not prompt:
+        return jsonify({"error": "Prompt vazio"}), 400
     
-    with LOCK_ESTADO:
-        ESTADO_KAEL["mensagens_chat"].append({
-            "autor": "Você",
-            "texto": texto,
-            "hora": time.strftime("%H:%M:%S")
-        })
-        ESTADO_KAEL["status"] = "Processando"
-        
-        texto_lower = texto.lower()
-        
-        if texto_lower in ("/teste_conexao", "/test_conexao_roblox"):
-            print("[API] 🎯 COMANDO INTERCEPTADO! Criando tarefa de PING para o Roblox.")
-            ESTADO_KAEL["fila_roblox"].append({
-                "tipo": "ping",
-                "nome": "TesteConexao",
-                "codigo": "print('[KAEL] 🟢 PONG! Conexão com Python estabelecida com sucesso!')"
-            })
-            ESTADO_KAEL["ultima_resposta"] = "📡 Comando interceptado! Tarefa de PING enviada para o Roblox Studio. Verifique o Output."
-            ESTADO_KAEL["status"] = "Ocioso"
-            return jsonify({"status": "sucesso"})
-            
-        ESTADO_KAEL["ultimo_comando"] = texto
+    print(f"\n[API] Recebido: {prompt[:80]}...")
+    
+    if prompt.startswith('/'):
+        resultado = registry.dispatch(prompt)
+        if resultado:
+            hist = ctx.load_historico()
+            hist.append({"role": "user", "content": prompt})
+            hist.append({"role": "assistant", "content": resultado.get("response", ""),
+                         "thinking": resultado.get("thinking", "")})
+            ctx.save_historico(hist)
+            return jsonify(resultado)
+    
+    # Conversa normal
+    memorias = []
+    if ctx.memory is not None:
+        try:
+            memorias = ctx.memory.search_similar(prompt, limit=3)
+        except Exception:
+            pass
+    
+    hist = ctx.load_historico()
+    if ctx.compressor is not None:
+        contexto = ctx.compressor.build_context(prompt, hist, memorias, ctx.system_prompt)
+    else:
+        contexto = prompt
+    
+    resultado = ctx.generate(contexto)
+    resposta_final = ctx.process_save_commands(resultado['response'])
+    
+    hist.append({"role": "user", "content": prompt})
+    hist.append({"role": "assistant", "content": resposta_final, "thinking": resultado['thinking']})
+    ctx.save_historico(hist)
+    
+    return jsonify({"response": resposta_final, "thinking": resultado['thinking'], "status": "success"})
 
-    return jsonify({"status": "processando"})
+@app.route('/stream', methods=['GET', 'POST'])
+def stream():
+    if request.method == 'GET':
+        prompt = request.args.get('prompt', '')
+    else:
+        prompt = (request.json or {}).get('prompt', '')
+    if not prompt:
+        return jsonify({"error": "Prompt vazio."}), 400
+    resultado = ctx.generate(prompt)
+    return jsonify({"response": resultado['response'], "thinking": resultado['thinking'], "status": "success"})
 
-@app.route("/ultimas_mensagens", methods=["GET"])
-def ultimas_mensagens():
-    with LOCK_ESTADO:
-        msgs = list(ESTADO_KAEL["mensagens_chat"])
-        resp = ESTADO_KAEL["ultima_resposta"]
-        if resp:
-            msgs.append({
-                "autor": "Kael",
-                "texto": resp,
-                "hora": time.strftime("%H:%M:%S")
-            })
-            ESTADO_KAEL["mensagens_chat"].append({
-                "autor": "Kael",
-                "texto": resp,
-                "hora": time.strftime("%H:%M:%S")
-            })
-            ESTADO_KAEL["ultima_resposta"] = ""
-            
-    return jsonify({"mensagens": msgs[-50:], "status": ESTADO_KAEL["status"]})
-
-# ==========================================================
-# ROTAS DE COMUNICAÇÃO COM O ROBLOX STUDIO
-# ==========================================================
-@app.route('/proxima_tarefa', methods=['GET'])
-def proxima_tarefa():
-    with LOCK_ESTADO:
-        if ESTADO_KAEL["fila_roblox"]:
-            tarefa = ESTADO_KAEL["fila_roblox"].pop(0)
-            print(f"[API] 📤 ENVIANDO TAREFA PARA O ROBLOX: {tarefa.get('tipo')}")
-            return jsonify({"status": "ok", "tarefa": tarefa})
-        else:
-            return jsonify({"status": "ok", "tarefa": None})
-
-@app.route('/tarefa_concluida', methods=['POST'])
-def tarefa_concluida():
-    print("[API] ✅ Roblox confirmou que executou a tarefa.")
-    return jsonify({"status": "ok"})
-
-@app.route('/estado_jogo', methods=['POST'])
-def receber_estado_jogo():
-    dados = request.json or {}
-    with LOCK_ESTADO:
-        ESTADO_KAEL["estado_jogo"] = dados
-    print(f"[API] 🗺️ Mapa da cena recebido ({dados.get('total_instancias', 0)} instâncias).")
-    return jsonify({"status": "ok"})
-
-@app.route('/reportar_erro', methods=['POST'])
-def reportar_erro():
-    dados = request.json or {}
-    origem = dados.get("origem", "Desconhecida")
-    erro = dados.get("erro", "")
-    print(f"[API] ⚠️ Erro reportado pelo Roblox ({origem}): {erro}")
-    with LOCK_ESTADO:
-        ESTADO_KAEL["ultimo_erro_roblox"] = erro
-    return jsonify({"status": "ok"})
-
-@app.route('/confirmar_etapa', methods=['POST'])
-def confirmar_etapa():
-    dados = request.json or {}
-    print(f"[API] ✅ Etapa confirmada no Studio: {dados.get('descricao', '')}")
-    return jsonify({"status": "ok"})
-
-def iniciar_api(porta=8000):
-    def rodar():
-        logging.getLogger('werkzeug').setLevel(logging.ERROR)
-        app.run(host='0.0.0.0', port=porta, debug=False, use_reloader=False)
-    threading.Thread(target=rodar, daemon=True).start()
-    print(f"[API] 🌐 Servidor Flask iniciado em http://127.0.0.1:{porta}")
-
-if __name__ == "__main__":
-    iniciar_api(8000)
-    print("[API] Sistema rodando. Aguardando comandos...")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n[API] Encerrando...")
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=8000, debug=False)

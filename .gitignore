@@ -26,3 +26,10 @@ Data/*.sqlite3
 temp/
 tmp/
 atualizacoes_pendentes/
+
+# Banco e histórico local
+*.db
+*.sqlite
+*.sqlite3
+ultimas_mensagens.json
+config/config.json
